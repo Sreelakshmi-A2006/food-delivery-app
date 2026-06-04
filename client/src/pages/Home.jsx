@@ -14,12 +14,16 @@ function Home() {
         <div>
             <h1>Restaurants</h1>
 
-            {restaurants.map(r => (
-                <div key={r._id}>
-                    <h3>{r.name}</h3>
-                    <p>{r.cuisine}</p>
-                </div>
-            ))}
+            {Array.isArray(restaurants) && restaurants.length > 0 ? (
+                restaurants.map(r => (
+                    <div key={r._id}>
+                        <h3>{r.name}</h3>
+                        <p>{r.cuisine}</p>
+                    </div>
+                ))
+            ) : (
+                <p>No restaurants found</p>
+            )}
         </div>
     );
 }

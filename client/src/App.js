@@ -35,13 +35,13 @@ function App() {
             <div className="container my-4">
                 <Routes>
                     <Route path="/" element={<Home />} />
-                    <Route 
-                        path="/login" 
-                        element={user ? <Navigate to="/" /> : <Login onLogin={loginUser} />} 
+                    <Route
+                        path="/login"
+                        element={user ? <Navigate to="/" /> : <Login onLogin={loginUser} />}
                     />
-                    <Route 
-                        path="/register" 
-                        element={user ? <Navigate to="/" /> : <Register />} 
+                    <Route
+                        path="/register"
+                        element={user ? <Navigate to="/" /> : <Register />}
                     />
                     <Route path="/cart" element={<Cart />} />
                     <Route path="/orders" element={<Orders />} />

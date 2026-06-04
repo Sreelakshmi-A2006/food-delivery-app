@@ -14,7 +14,7 @@ function Navbar({ user, onLogout }) {
             <div className="container">
                 <Link className="navbar-brand fw-bold fs-4 d-flex align-items-center" to="/">
                     <i className="bi bi-egg-fried text-warning me-2"></i>
-                    Gourmet Express
+                    5 Star Cafe
                 </Link>
                 <button
                     className="navbar-toggler"
