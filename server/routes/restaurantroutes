@@ -1,16 +1,177 @@
 const router = require("express").Router();
+const mongoose = require("mongoose");
+const Restaurant = require("../Models/restaurantmodels");
+const Menu = require("../Models/menumodels");
+const { mockRestaurants, mockMenus } = require("../config/mockDB");
 
-const mockRestaurants = [
-    { _id: "res1", name: "Pizza Palace", cuisine: "Italian / Pizza" },
-    { _id: "res2", name: "Burger Bistro", cuisine: "Burgers & Fries" },
-    { _id: "res3", name: "Sushi Sun", cuisine: "Japanese Sushi" }
-];
+// Helper to check if DB is connected
+const isDBConnected = () => mongoose.connection.readyState === 1;
 
-router.get("/", (req, res) => {
-    res.json(mockRestaurants);
+// GET /api/restaurants - Fetch all restaurants
+router.get("/", async (req, res) => {
+    try {
+        if (isDBConnected()) {
+            const restaurants = await Restaurant.find();
+            return res.json(restaurants);
+        } else {
+            return res.json(mockRestaurants);
+        }
+    } catch (error) {
+        console.error("Fetch restaurants error:", error);
+        res.status(500).json({ message: "Server error fetching restaurants" });
+    }
 });
-router.post("/", (req, res) => {
-    res.json({ message: "Create restaurant stub" });
+
+// GET /api/restaurants/:id - Fetch single restaurant
+router.get("/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (isDBConnected()) {
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid Restaurant ID format" });
+            }
+            const restaurant = await Restaurant.findById(id);
+            if (!restaurant) {
+                return res.status(404).json({ message: "Restaurant not found" });
+            }
+            return res.json(restaurant);
+        } else {
+            const restaurant = mockRestaurants.find(r => r._id === id);
+            if (!restaurant) {
+                return res.status(404).json({ message: "Restaurant not found (mock db)" });
+            }
+            return res.json(restaurant);
+        }
+    } catch (error) {
+        console.error("Fetch restaurant by ID error:", error);
+        res.status(500).json({ message: "Server error fetching restaurant details" });
+    }
+});
+
+// GET /api/restaurants/:id/menu - Fetch menu items for a specific restaurant
+router.get("/:id/menu", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (isDBConnected()) {
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid Restaurant ID format" });
+            }
+            const menuItems = await Menu.find({ restaurantId: id });
+            return res.json(menuItems);
+        } else {
+            const menuItems = mockMenus.filter(m => m.restaurantId === id);
+            return res.json(menuItems);
+        }
+    } catch (error) {
+        console.error("Fetch menu error:", error);
+        res.status(500).json({ message: "Server error fetching menu items" });
+    }
+});
+
+// POST /api/restaurants - Create a new restaurant
+router.post("/", async (req, res) => {
+    try {
+        const { name, cuisine, address, image } = req.body;
+        if (!name || !cuisine) {
+            return res.status(400).json({ message: "Name and cuisine are required" });
+        }
+
+        if (isDBConnected()) {
+            const newRes = new Restaurant({ name, cuisine, address, image });
+            await newRes.save();
+            return res.status(201).json(newRes);
+        } else {
+            const newRes = {
+                _id: "res_" + Date.now(),
+                name,
+                cuisine,
+                address: address || "",
+                image: image || ""
+            };
+            mockRestaurants.push(newRes);
+            return res.status(201).json(newRes);
+        }
+    } catch (error) {
+        console.error("Create restaurant error:", error);
+        res.status(500).json({ message: "Server error creating restaurant" });
+    }
+});
+
+// PUT /api/restaurants/:id - Update restaurant details
+router.put("/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, cuisine, address, image } = req.body;
+
+        if (isDBConnected()) {
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid Restaurant ID format" });
+            }
+            const updated = await Restaurant.findByIdAndUpdate(
+                id,
+                { $set: { name, cuisine, address, image } },
+                { new: true }
+            );
+            if (!updated) {
+                return res.status(404).json({ message: "Restaurant not found" });
+            }
+            return res.json(updated);
+        } else {
+            const idx = mockRestaurants.findIndex(r => r._id === id);
+            if (idx === -1) {
+                return res.status(404).json({ message: "Restaurant not found (mock db)" });
+            }
+            mockRestaurants[idx] = {
+                ...mockRestaurants[idx],
+                name: name !== undefined ? name : mockRestaurants[idx].name,
+                cuisine: cuisine !== undefined ? cuisine : mockRestaurants[idx].cuisine,
+                address: address !== undefined ? address : mockRestaurants[idx].address,
+                image: image !== undefined ? image : mockRestaurants[idx].image
+            };
+            return res.json(mockRestaurants[idx]);
+        }
+    } catch (error) {
+        console.error("Update restaurant error:", error);
+        res.status(500).json({ message: "Server error updating restaurant" });
+    }
+});
+
+// DELETE /api/restaurants/:id - Delete a restaurant
+router.delete("/:id", async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (isDBConnected()) {
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid Restaurant ID format" });
+            }
+            const deleted = await Restaurant.findByIdAndDelete(id);
+            if (!deleted) {
+                return res.status(404).json({ message: "Restaurant not found" });
+            }
+            // Optional: clean up menu items for this restaurant
+            await Menu.deleteMany({ restaurantId: id });
+            return res.json({ message: "Restaurant deleted successfully from MongoDB" });
+        } else {
+            const idx = mockRestaurants.findIndex(r => r._id === id);
+            if (idx === -1) {
+                return res.status(404).json({ message: "Restaurant not found (mock db)" });
+            }
+            mockRestaurants.splice(idx, 1);
+            // Clean up mock menu items for this restaurant
+            for (let i = mockMenus.length - 1; i >= 0; i--) {
+                if (mockMenus[i].restaurantId === id) {
+                    mockMenus.splice(i, 1);
+                }
+            }
+            return res.json({ message: "Restaurant deleted successfully from Mock Database" });
+        }
+    } catch (error) {
+        console.error("Delete restaurant error:", error);
+        res.status(500).json({ message: "Server error deleting restaurant" });
+    }
 });
 
 module.exports = router;

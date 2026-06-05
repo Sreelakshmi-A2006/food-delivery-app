@@ -1,7 +1,7 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-function Navbar({ user, onLogout }) {
+function Navbar({ user, onLogout, cartCount }) {
     const navigate = useNavigate();
 
     const handleLogout = () => {
@@ -42,8 +42,13 @@ function Navbar({ user, onLogout }) {
                                     </Link>
                                 </li>
                                 <li className="nav-item">
-                                    <Link className="nav-link" to="/cart">
+                                    <Link className="nav-link position-relative pe-3" to="/cart">
                                         <i className="bi bi-cart3 me-1"></i> Cart
+                                        {cartCount > 0 && (
+                                            <span className="position-absolute top-1 start-100 translate-middle badge rounded-pill bg-danger" style={{ fontSize: "0.65rem", padding: "0.25em 0.5em" }}>
+                                                {cartCount}
+                                            </span>
+                                        )}
                                     </Link>
                                 </li>
                             </>

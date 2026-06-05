@@ -9,6 +9,15 @@ import Orders from "./pages/Orders";
 
 function App() {
     const [user, setUser] = useState(null);
+    const [cart, setCart] = useState(() => {
+        try {
+            const storedCart = localStorage.getItem("cart");
+            return storedCart ? JSON.parse(storedCart) : [];
+        } catch (e) {
+            console.error("Failed parsing cart from localStorage:", e);
+            return [];
+        }
+    });
 
     useEffect(() => {
         const storedUser = localStorage.getItem("user");
@@ -16,6 +25,10 @@ function App() {
             setUser(JSON.parse(storedUser));
         }
     }, []);
+
+    useEffect(() => {
+        localStorage.setItem("cart", JSON.stringify(cart));
+    }, [cart]);
 
     const loginUser = (userData, token) => {
         localStorage.setItem("user", JSON.stringify(userData));
@@ -27,14 +40,50 @@ function App() {
         localStorage.removeItem("user");
         localStorage.removeItem("token");
         setUser(null);
+        setCart([]); // Clear cart on logout
     };
+
+    const addToCart = (item) => {
+        setCart((prevCart) => {
+            const existing = prevCart.find((i) => i._id === item._id);
+            if (existing) {
+                return prevCart.map((i) =>
+                    i._id === item._id ? { ...i, quantity: i.quantity + 1 } : i
+                );
+            }
+            return [...prevCart, { ...item, quantity: 1 }];
+        });
+    };
+
+    const removeFromCart = (itemId) => {
+        setCart((prevCart) => prevCart.filter((i) => i._id !== itemId));
+    };
+
+    const updateCartQuantity = (itemId, quantity) => {
+        if (quantity <= 0) {
+            removeFromCart(itemId);
+            return;
+        }
+        setCart((prevCart) =>
+            prevCart.map((i) => (i._id === itemId ? { ...i, quantity } : i))
+        );
+    };
+
+    const clearCart = () => {
+        setCart([]);
+    };
+
+    const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
 
     return (
         <Router>
-            <Navbar user={user} onLogout={logoutUser} />
+            <Navbar user={user} onLogout={logoutUser} cartCount={cartCount} />
             <div className="container my-4">
                 <Routes>
-                    <Route path="/" element={<Home />} />
+                    <Route 
+                        path="/" 
+                        element={<Home addToCart={addToCart} cart={cart} />} 
+                    />
                     <Route
                         path="/login"
                         element={user ? <Navigate to="/" /> : <Login onLogin={loginUser} />}
@@ -43,8 +92,22 @@ function App() {
                         path="/register"
                         element={user ? <Navigate to="/" /> : <Register />}
                     />
-                    <Route path="/cart" element={<Cart />} />
-                    <Route path="/orders" element={<Orders />} />
+                    <Route 
+                        path="/cart" 
+                        element={
+                            <Cart 
+                                cart={cart} 
+                                updateCartQuantity={updateCartQuantity} 
+                                removeFromCart={removeFromCart} 
+                                clearCart={clearCart} 
+                                user={user} 
+                            />
+                        } 
+                    />
+                    <Route 
+                        path="/orders" 
+                        element={user ? <Orders user={user} /> : <Navigate to="/login" />} 
+                    />
                     <Route path="*" element={<Navigate to="/" />} />
                 </Routes>
             </div>

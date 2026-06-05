@@ -1,10 +1,171 @@
 const router = require("express").Router();
+const mongoose = require("mongoose");
+const Order = require("../Models/ordermodels");
+const { mockOrders } = require("../config/mockDB");
+const auth = require("../middleware/auth");
 
-router.post("/", (req, res) => {
-    res.json({ message: "Create order stub" });
+// Helper to check if DB is connected
+const isDBConnected = () => mongoose.connection.readyState === 1;
+
+// POST /api/orders - Place a new order (cart booking)
+router.post("/", auth, async (req, res) => {
+    try {
+        const { items, totalAmount } = req.body;
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ message: "Order must contain at least one item" });
+        }
+        if (totalAmount === undefined || totalAmount === null) {
+            return res.status(400).json({ message: "Total amount is required" });
+        }
+
+        const userId = req.user.id;
+
+        if (isDBConnected()) {
+            const newOrder = new Order({
+                userId: mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : null,
+                items,
+                totalAmount,
+                status: "Pending"
+            });
+            await newOrder.save();
+            return res.status(201).json({
+                message: "Order placed successfully on MongoDB",
+                order: newOrder
+            });
+        } else {
+            const newOrder = {
+                _id: "order_" + Date.now(),
+                userId,
+                items,
+                totalAmount,
+                status: "Pending",
+                createdAt: new Date().toISOString()
+            };
+            mockOrders.push(newOrder);
+            return res.status(201).json({
+                message: "Order placed successfully on Mock Database",
+                order: newOrder
+            });
+        }
+    } catch (error) {
+        console.error("Place order error:", error);
+        res.status(500).json({ message: "Server error placing order" });
+    }
 });
-router.get("/:id", (req, res) => {
-    res.json({ message: "Get order details stub" });
+
+// GET /api/orders - Get orders for the authenticated user
+router.get("/", auth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        if (isDBConnected()) {
+            // Fetch user's orders
+            let query = {};
+            if (mongoose.Types.ObjectId.isValid(userId)) {
+                query = { userId: new mongoose.Types.ObjectId(userId) };
+            } else {
+                query = { userId: userId }; // Treat as string if not valid ObjectId
+            }
+            // Sort by latest order first
+            const orders = await Order.find(query).sort({ _id: -1 });
+            return res.json(orders);
+        } else {
+            // Filter from mock database orders
+            const orders = mockOrders.filter(o => o.userId === userId);
+            // Sort mock orders by latest first
+            orders.sort((a, b) => b._id.localeCompare(a._id));
+            return res.json(orders);
+        }
+    } catch (error) {
+        console.error("Get orders error:", error);
+        res.status(500).json({ message: "Server error fetching user orders" });
+    }
+});
+
+// PUT /api/orders/:id - Update order status (e.g. Cancel order)
+router.put("/:id", auth, async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+
+        if (!status) {
+            return res.status(400).json({ message: "Status is required" });
+        }
+
+        if (isDBConnected()) {
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid Order ID format" });
+            }
+            const order = await Order.findById(id);
+            if (!order) {
+                return res.status(404).json({ message: "Order not found" });
+            }
+
+            // Optional check: ensure user owns the order
+            if (order.userId.toString() !== req.user.id.toString()) {
+                return res.status(403).json({ message: "Unauthorized to update this order" });
+            }
+
+            order.status = status;
+            await order.save();
+            return res.json({ message: "Order status updated successfully on MongoDB", order });
+        } else {
+            const order = mockOrders.find(o => o._id === id);
+            if (!order) {
+                return res.status(404).json({ message: "Order not found (mock db)" });
+            }
+
+            if (order.userId !== req.user.id) {
+                return res.status(403).json({ message: "Unauthorized to update this order (mock db)" });
+            }
+
+            order.status = status;
+            return res.json({ message: "Order status updated successfully on Mock Database", order });
+        }
+    } catch (error) {
+        console.error("Update order error:", error);
+        res.status(500).json({ message: "Server error updating order" });
+    }
+});
+
+// DELETE /api/orders/:id - Delete an order
+router.delete("/:id", auth, async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        if (isDBConnected()) {
+            if (!mongoose.Types.ObjectId.isValid(id)) {
+                return res.status(400).json({ message: "Invalid Order ID format" });
+            }
+            
+            const order = await Order.findById(id);
+            if (!order) {
+                return res.status(404).json({ message: "Order not found" });
+            }
+
+            if (order.userId.toString() !== req.user.id.toString()) {
+                return res.status(403).json({ message: "Unauthorized to delete this order" });
+            }
+
+            await Order.findByIdAndDelete(id);
+            return res.json({ message: "Order deleted successfully from MongoDB" });
+        } else {
+            const idx = mockOrders.findIndex(o => o._id === id);
+            if (idx === -1) {
+                return res.status(404).json({ message: "Order not found (mock db)" });
+            }
+
+            if (mockOrders[idx].userId !== req.user.id) {
+                return res.status(403).json({ message: "Unauthorized to delete this order (mock db)" });
+            }
+
+            mockOrders.splice(idx, 1);
+            return res.json({ message: "Order deleted successfully from Mock Database" });
+        }
+    } catch (error) {
+        console.error("Delete order error:", error);
+        res.status(500).json({ message: "Server error deleting order" });
+    }
 });
 
 module.exports = router;

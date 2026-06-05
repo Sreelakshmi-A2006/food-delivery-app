@@ -3,24 +3,15 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const User = require("../Models/usermodels");
 const mongoose = require("mongoose");
-
-// Mock database for when MongoDB is not connected
-const mockUsers = [
-    {
-        name: "Test User",
-        email: "user@example.com",
-        password: "", // Set dynamically below
-        role: "user"
-    }
-];
-
-// Hash the default mock user's password on startup
-(async () => {
-    mockUsers[0].password = await bcrypt.hash("password123", 10);
-})();
+const { mockUsers } = require("../config/mockDB");
+const auth = require("../middleware/auth");
 
 const JWT_SECRET = process.env.JWT_SECRET || "fallback_secret_key";
 
+// Helper to check if DB is connected
+const isDBConnected = () => mongoose.connection.readyState === 1;
+
+// POST /api/users/register - Register a user
 router.post("/register", async (req, res) => {
     try {
         const { name, email, password } = req.body;
@@ -31,8 +22,7 @@ router.post("/register", async (req, res) => {
 
         const emailLower = email.toLowerCase();
 
-        // Check if DB is connected
-        if (mongoose.connection.readyState === 1) {
+        if (isDBConnected()) {
             const existingUser = await User.findOne({ email: emailLower });
             if (existingUser) {
                 return res.status(400).json({ message: "User already exists" });
@@ -68,6 +58,7 @@ router.post("/register", async (req, res) => {
     }
 });
 
+// POST /api/users/login - Log in a user
 router.post("/login", async (req, res) => {
     try {
         const { email, password } = req.body;
@@ -77,14 +68,11 @@ router.post("/login", async (req, res) => {
         }
 
         const emailLower = email.toLowerCase();
-
         let user = null;
 
-        // Check if DB is connected
-        if (mongoose.connection.readyState === 1) {
+        if (isDBConnected()) {
             user = await User.findOne({ email: emailLower });
         } else {
-            // Use In-Memory Mock Database
             user = mockUsers.find(u => u.email === emailLower);
         }
 
@@ -107,6 +95,7 @@ router.post("/login", async (req, res) => {
         res.json({
             token,
             user: {
+                id: user._id || user.email,
                 name: user.name,
                 email: user.email,
                 role: user.role
@@ -114,6 +103,93 @@ router.post("/login", async (req, res) => {
         });
     } catch (error) {
         console.error("Login error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// GET /api/users/profile - Get current user profile (auth protected)
+router.get("/profile", auth, async (req, res) => {
+    try {
+        let user = null;
+
+        if (isDBConnected()) {
+            // Find by MongoDB ID
+            if (mongoose.Types.ObjectId.isValid(req.user.id)) {
+                user = await User.findById(req.user.id).select("-password");
+            } else {
+                user = await User.findOne({ email: req.user.email }).select("-password");
+            }
+        } else {
+            user = mockUsers.find(u => u.email === req.user.email);
+        }
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({
+            id: user._id || user.email,
+            name: user.name,
+            email: user.email,
+            role: user.role
+        });
+    } catch (error) {
+        console.error("Profile GET error:", error);
+        res.status(500).json({ message: "Server error" });
+    }
+});
+
+// PUT /api/users/profile - Update current user profile (auth protected)
+router.put("/profile", auth, async (req, res) => {
+    try {
+        const { name, password } = req.body;
+        let user = null;
+
+        if (isDBConnected()) {
+            let updateData = {};
+            if (name) updateData.name = name;
+            if (password) {
+                updateData.password = await bcrypt.hash(password, 10);
+            }
+
+            if (mongoose.Types.ObjectId.isValid(req.user.id)) {
+                user = await User.findByIdAndUpdate(
+                    req.user.id,
+                    { $set: updateData },
+                    { new: true }
+                ).select("-password");
+            } else {
+                user = await User.findOneAndUpdate(
+                    { email: req.user.email },
+                    { $set: updateData },
+                    { new: true }
+                ).select("-password");
+            }
+        } else {
+            user = mockUsers.find(u => u.email === req.user.email);
+            if (user) {
+                if (name) user.name = name;
+                if (password) {
+                    user.password = await bcrypt.hash(password, 10);
+                }
+            }
+        }
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        res.json({
+            message: "Profile updated successfully",
+            user: {
+                id: user._id || user.email,
+                name: user.name,
+                email: user.email,
+                role: user.role
+            }
+        });
+    } catch (error) {
+        console.error("Profile PUT error:", error);
         res.status(500).json({ message: "Server error" });
     }
 });
