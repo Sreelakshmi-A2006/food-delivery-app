@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api from "../Services/api";
 
 function Cart({ cart, updateCartQuantity, removeFromCart, clearCart, user }) {
@@ -8,6 +8,8 @@ function Cart({ cart, updateCartQuantity, removeFromCart, clearCart, user }) {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const paymentCancelled = searchParams.get("payment_cancelled") === "true";
 
     const subtotal = cart.reduce((acc, item) => acc + (item.price * item.quantity), 0);
     const deliveryFee = subtotal > 0 ? 2.99 : 0;
@@ -38,9 +40,14 @@ function Cart({ cart, updateCartQuantity, removeFromCart, clearCart, user }) {
                 totalAmount: grandTotal
             });
 
-            setCreatedOrder(response.data.order);
-            setBookingSuccess(true);
-            clearCart();
+            const { order, checkoutUrl } = response.data;
+            if (checkoutUrl) {
+                navigate(checkoutUrl);
+            } else {
+                setCreatedOrder(order);
+                setBookingSuccess(true);
+                clearCart();
+            }
         } catch (err) {
             console.error("Checkout failed:", err);
             setError(err.response?.data?.message || "Something went wrong. Please try again.");
@@ -111,6 +118,15 @@ function Cart({ cart, updateCartQuantity, removeFromCart, clearCart, user }) {
             <h2 className="fw-bold mb-4 text-dark d-flex align-items-center">
                 <i className="bi bi-cart3 text-warning me-2"></i> Shopping Cart
             </h2>
+
+            {paymentCancelled && (
+                <div className="alert alert-warning rounded-3 d-flex align-items-center mb-4" role="alert">
+                    <i className="bi bi-exclamation-triangle-fill text-warning me-2 fs-5"></i>
+                    <div>
+                        <strong>Payment Cancelled:</strong> The transaction was not completed. You can verify your details and try placing your order again.
+                    </div>
+                </div>
+            )}
 
             {error && (
                 <div className="alert alert-danger rounded-3 d-flex align-items-center" role="alert">

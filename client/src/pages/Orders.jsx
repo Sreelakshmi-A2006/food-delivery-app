@@ -95,7 +95,7 @@ function Orders({ user }) {
                                     <div className="d-flex align-items-center gap-3">
                                         <h5 className="fw-extrabold text-dark m-0">${order.totalAmount.toFixed(2)}</h5>
                                         <span className={`badge px-3 py-2 rounded-pill fs-7 ${
-                                            order.status === "Pending" ? "bg-warning-subtle text-warning-emphasis border border-warning-subtle" :
+                                            order.status === "Pending" || order.status === "Pending Payment" ? "bg-warning-subtle text-warning-emphasis border border-warning-subtle" :
                                             order.status === "Cancelled" ? "bg-danger-subtle text-danger-emphasis border border-danger-subtle" :
                                             "bg-success-subtle text-success-emphasis border border-success-subtle"
                                         }`}>
@@ -128,8 +128,24 @@ function Orders({ user }) {
                                         ))}
                                     </div>
 
+                                    {order.transactionId && (
+                                        <div className="bg-light p-3 rounded-3 mt-3 border d-flex flex-wrap justify-content-between gap-3 text-secondary" style={{ fontSize: "0.85rem" }}>
+                                            <div>
+                                                <strong className="text-dark">Payment Method:</strong> {order.paymentMethod}
+                                            </div>
+                                            <div>
+                                                <strong className="text-dark">Transaction ID:</strong> <span className="font-monospace">{order.transactionId}</span>
+                                            </div>
+                                            {order.paymentTime && (
+                                                <div>
+                                                    <strong className="text-dark">Paid At:</strong> {new Date(order.paymentTime).toLocaleString()}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {/* Action Bar */}
-                                    {order.status === "Pending" && (
+                                    {(order.status === "Pending" || order.status === "Pending Payment") && (
                                         <div className="d-flex justify-content-end mt-4 pt-3 border-top">
                                             <button
                                                 disabled={actionLoading === order._id}

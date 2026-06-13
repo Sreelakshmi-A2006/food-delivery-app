@@ -25,12 +25,13 @@ router.post("/", auth, async (req, res) => {
                 userId: mongoose.Types.ObjectId.isValid(userId) ? new mongoose.Types.ObjectId(userId) : null,
                 items,
                 totalAmount,
-                status: "Pending"
+                status: "Pending Payment"
             });
             await newOrder.save();
             return res.status(201).json({
-                message: "Order placed successfully on MongoDB",
-                order: newOrder
+                message: "Order placed successfully, redirecting to payment...",
+                order: newOrder,
+                checkoutUrl: `/checkout?orderId=${newOrder._id}&amount=${totalAmount}`
             });
         } else {
             const newOrder = {
@@ -38,18 +39,76 @@ router.post("/", auth, async (req, res) => {
                 userId,
                 items,
                 totalAmount,
-                status: "Pending",
+                status: "Pending Payment",
                 createdAt: new Date().toISOString()
             };
             mockOrders.push(newOrder);
             return res.status(201).json({
-                message: "Order placed successfully on Mock Database",
-                order: newOrder
+                message: "Order placed successfully on Mock Database, redirecting to payment...",
+                order: newOrder,
+                checkoutUrl: `/checkout?orderId=${newOrder._id}&amount=${totalAmount}`
             });
         }
     } catch (error) {
         console.error("Place order error:", error);
         res.status(500).json({ message: "Server error placing order" });
+    }
+});
+
+// POST /api/orders/confirm-payment - Confirm order payment and update status
+router.post("/confirm-payment", auth, async (req, res) => {
+    try {
+        const { orderId, paymentMethod, transactionId } = req.body;
+        if (!orderId || !paymentMethod || !transactionId) {
+            return res.status(400).json({ message: "orderId, paymentMethod, and transactionId are required" });
+        }
+
+        if (isDBConnected()) {
+            if (!mongoose.Types.ObjectId.isValid(orderId)) {
+                return res.status(400).json({ message: "Invalid Order ID format" });
+            }
+            const order = await Order.findById(orderId);
+            if (!order) {
+                return res.status(404).json({ message: "Order not found" });
+            }
+
+            if (order.userId.toString() !== req.user.id.toString()) {
+                return res.status(403).json({ message: "Unauthorized to confirm this order" });
+            }
+
+            order.status = "Confirmed";
+            order.paymentMethod = paymentMethod;
+            order.transactionId = transactionId;
+            order.paymentTime = new Date();
+            await order.save();
+
+            return res.json({
+                message: "Payment confirmed and order updated successfully on MongoDB",
+                order
+            });
+        } else {
+            const order = mockOrders.find(o => o._id === orderId);
+            if (!order) {
+                return res.status(404).json({ message: "Order not found (mock db)" });
+            }
+
+            if (order.userId !== req.user.id) {
+                return res.status(403).json({ message: "Unauthorized to confirm this order (mock db)" });
+            }
+
+            order.status = "Confirmed";
+            order.paymentMethod = paymentMethod;
+            order.transactionId = transactionId;
+            order.paymentTime = new Date().toISOString();
+
+            return res.json({
+                message: "Payment confirmed and order updated successfully on Mock Database",
+                order
+            });
+        }
+    } catch (error) {
+        console.error("Confirm payment error:", error);
+        res.status(500).json({ message: "Server error confirming payment" });
     }
 });
 
